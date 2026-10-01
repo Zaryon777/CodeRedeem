@@ -1,0 +1,878 @@
+-- LocalScript: PanelGUI_AutoRedeem.lua
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TextChatService = game:GetService("TextChatService")
+local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+--------------------------------------------------------------------------------
+-- CONFIGURACIÓN Y ESTADOS
+--------------------------------------------------------------------------------
+
+local config = {
+	autoRedeemActive = false,
+	submitDelayActive = false,
+	wordSubmitActive = false,
+
+	delayTime = 0.2,
+	wordSubmitTarget = 1,
+
+	toggleKey = Enum.KeyCode.R,
+
+	isAutoMode = true,
+	listeningForKey = false,
+
+	collectedWords = {},
+
+	-- NUEVA IMAGEN
+	bgAssetId = "rbxassetid://13714595263864"
+}
+
+--------------------------------------------------------------------------------
+-- FUNCIONES AUXILIARES
+--------------------------------------------------------------------------------
+
+local function addTextStroke(object)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 2.2
+	stroke.Transparency = 0
+	stroke.Parent = object
+end
+
+local function createCorner(parent, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 4)
+	corner.Parent = parent
+	return corner
+end
+
+--------------------------------------------------------------------------------
+-- PANEL PRINCIPAL
+--------------------------------------------------------------------------------
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoRedeemPanelGui"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainPanel"
+mainFrame.Size = UDim2.new(0, 330, 0, 510)
+mainFrame.Position = UDim2.new(0.05, 0, 0.15, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+mainFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+mainFrame.BorderSizePixel = 4
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+createCorner(mainFrame, 6)
+
+--------------------------------------------------------------------------------
+-- IMAGEN DE FONDO
+--------------------------------------------------------------------------------
+
+local bgImage = Instance.new("ImageLabel")
+bgImage.Name = "BackgroundImage"
+bgImage.Size = UDim2.new(1, 0, 1, 0)
+bgImage.Position = UDim2.new(0, 0, 0, 0)
+bgImage.BackgroundTransparency = 1
+bgImage.Image = config.bgAssetId
+
+-- Oscurecer ligeramente la imagen
+bgImage.ImageColor3 = Color3.fromRGB(40, 40, 40)
+bgImage.ImageTransparency = 0.15
+
+bgImage.ScaleType = Enum.ScaleType.Tile
+bgImage.TileSize = UDim2.new(0, 200, 0, 200)
+
+bgImage.ZIndex = 1
+bgImage.Parent = mainFrame
+
+--------------------------------------------------------------------------------
+-- OVERLAY OSCURO
+--------------------------------------------------------------------------------
+
+local darkOverlay = Instance.new("Frame")
+darkOverlay.Name = "DarkOverlay"
+darkOverlay.Size = UDim2.new(1, 0, 1, 0)
+darkOverlay.Position = UDim2.new(0, 0, 0, 0)
+darkOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+darkOverlay.BackgroundTransparency = 0.4
+darkOverlay.BorderSizePixel = 0
+darkOverlay.ZIndex = 2
+darkOverlay.Parent = mainFrame
+
+--------------------------------------------------------------------------------
+-- CONTENEDOR FRONTAL
+--------------------------------------------------------------------------------
+
+local contentFrame = Instance.new("Frame")
+contentFrame.Name = "Content"
+contentFrame.Size = UDim2.new(1, 0, 1, 0)
+contentFrame.Position = UDim2.new(0, 0, 0, 0)
+contentFrame.BackgroundTransparency = 1
+contentFrame.ZIndex = 3
+contentFrame.Parent = mainFrame
+
+local layout = Instance.new("UIListLayout")
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding = UDim.new(0, 6)
+layout.Parent = contentFrame
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 12)
+padding.PaddingBottom = UDim.new(0, 12)
+padding.PaddingLeft = UDim.new(0, 14)
+padding.PaddingRight = UDim.new(0, 14)
+padding.Parent = contentFrame
+
+--------------------------------------------------------------------------------
+-- TÍTULOS
+--------------------------------------------------------------------------------
+
+local function createSectionTitle(text, order)
+	local label = Instance.new("TextLabel")
+
+	label.Name = "SectionTitle"
+	label.Size = UDim2.new(1, 0, 0, 24)
+
+	label.BackgroundTransparency = 1
+
+	label.Text = text
+	label.Font = Enum.Font.SourceSansBold
+	label.TextSize = 22
+
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+	label.TextXAlignment = Enum.TextXAlignment.Left
+
+	label.LayoutOrder = order
+	label.ZIndex = 4
+
+	label.Parent = contentFrame
+
+	addTextStroke(label)
+
+	return label
+end
+
+--------------------------------------------------------------------------------
+-- FILAS CON TOGGLE
+--------------------------------------------------------------------------------
+
+local function createToggleRow(titleText, descText, order)
+
+	local row = Instance.new("Frame")
+
+	row.Name = titleText .. "Row"
+	row.Size = UDim2.new(1, 0, 0, 42)
+
+	row.BackgroundTransparency = 1
+
+	row.LayoutOrder = order
+	row.ZIndex = 4
+
+	row.Parent = contentFrame
+
+	----------------------------------------------------------------
+	-- TEXTO
+	----------------------------------------------------------------
+
+	local textFrame = Instance.new("Frame")
+
+	textFrame.Name = "Text"
+	textFrame.Size = UDim2.new(0.55, 0, 1, 0)
+
+	textFrame.BackgroundTransparency = 1
+
+	textFrame.ZIndex = 4
+	textFrame.Parent = row
+
+	local title = Instance.new("TextLabel")
+
+	title.Name = "Title"
+	title.Size = UDim2.new(1, 0, 0, 20)
+
+	title.BackgroundTransparency = 1
+
+	title.Text = titleText
+	title.Font = Enum.Font.SourceSansBold
+	title.TextSize = 17
+
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+
+	title.ZIndex = 5
+	title.Parent = textFrame
+
+	addTextStroke(title)
+
+	local desc = Instance.new("TextLabel")
+
+	desc.Name = "Description"
+	desc.Size = UDim2.new(1, 0, 0, 18)
+	desc.Position = UDim2.new(0, 0, 0, 18)
+
+	desc.BackgroundTransparency = 1
+
+	desc.Text = descText
+	desc.Font = Enum.Font.SourceSans
+	desc.TextSize = 11
+
+	desc.TextColor3 = Color3.fromRGB(220, 220, 220)
+	desc.TextXAlignment = Enum.TextXAlignment.Left
+
+	desc.ZIndex = 5
+	desc.Parent = textFrame
+
+	addTextStroke(desc)
+
+	----------------------------------------------------------------
+	-- CONTROL
+	----------------------------------------------------------------
+
+	local controlFrame = Instance.new("Frame")
+
+	controlFrame.Name = "Control"
+	controlFrame.Size = UDim2.new(0.45, 0, 1, 0)
+	controlFrame.Position = UDim2.new(0.55, 0, 0, 0)
+
+	controlFrame.BackgroundTransparency = 1
+
+	controlFrame.ZIndex = 4
+	controlFrame.Parent = row
+
+	----------------------------------------------------------------
+	-- SWITCH
+	----------------------------------------------------------------
+
+	local switchBg = Instance.new("TextButton")
+
+	switchBg.Name = "Toggle"
+	switchBg.Size = UDim2.new(0, 50, 0, 24)
+	switchBg.Position = UDim2.new(1, -50, 0.5, -12)
+
+	switchBg.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+
+	switchBg.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	switchBg.BorderSizePixel = 2
+
+	switchBg.Text = ""
+
+	switchBg.AutoButtonColor = false
+
+	switchBg.ZIndex = 5
+	switchBg.Parent = controlFrame
+
+	createCorner(switchBg, 12)
+
+	----------------------------------------------------------------
+	-- CÍRCULO
+	----------------------------------------------------------------
+
+	local circle = Instance.new("Frame")
+
+	circle.Name = "Circle"
+	circle.Size = UDim2.new(0, 18, 0, 18)
+	circle.Position = UDim2.new(0, 3, 0.5, -9)
+
+	circle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+
+	circle.BorderColor3 = Color3.fromRGB(0, 0, 0)
+
+	circle.ZIndex = 6
+	circle.Parent = switchBg
+
+	createCorner(circle, 20)
+
+	return row, switchBg, circle, controlFrame
+end
+
+--------------------------------------------------------------------------------
+-- ACTUALIZAR TOGGLE
+--------------------------------------------------------------------------------
+
+local function setToggle(button, circle, enabled)
+
+	if enabled then
+
+		button.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+
+		TweenService:Create(
+			circle,
+			TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{
+				Position = UDim2.new(1, -21, 0.5, -9),
+				BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			}
+		):Play()
+
+	else
+
+		button.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+
+		TweenService:Create(
+			circle,
+			TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{
+				Position = UDim2.new(0, 3, 0.5, -9),
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+			}
+		):Play()
+
+	end
+end
+
+--------------------------------------------------------------------------------
+-- CODE REDEEM
+--------------------------------------------------------------------------------
+
+createSectionTitle("CODE REDEEM", 1)
+
+local _, autoRedeemBtn, autoRedeemCircle =
+	createToggleRow(
+		"Auto Redeem",
+		"The announcement is copied automatically.",
+		2
+	)
+
+local _, delayBtn, delayCircle, delayFrame =
+	createToggleRow(
+		"Submit Delay",
+		"The delay before submitting it.",
+		3
+	)
+
+--------------------------------------------------------------------------------
+-- DELAY BOX
+--------------------------------------------------------------------------------
+
+local delayBox = Instance.new("TextBox")
+
+delayBox.Name = "DelayBox"
+delayBox.Size = UDim2.new(0, 36, 0, 24)
+delayBox.Position = UDim2.new(1, -94, 0.5, -12)
+
+delayBox.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
+
+delayBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+delayBox.BorderSizePixel = 2
+
+delayBox.Text = "0.2"
+
+delayBox.Font = Enum.Font.SourceSansBold
+delayBox.TextSize = 14
+
+delayBox.TextColor3 = Color3.fromRGB(0, 0, 0)
+
+delayBox.ClearTextOnFocus = false
+
+delayBox.ZIndex = 6
+delayBox.Parent = delayFrame
+
+createCorner(delayBox, 3)
+
+--------------------------------------------------------------------------------
+-- WORD SUBMIT
+--------------------------------------------------------------------------------
+
+local _, wordBtn, wordCircle, wordFrame =
+	createToggleRow(
+		"Word Submit",
+		"How many words to redeem automatically.",
+		4
+	)
+
+--------------------------------------------------------------------------------
+-- WORD BOX
+--------------------------------------------------------------------------------
+
+local wordBox = Instance.new("TextBox")
+
+wordBox.Name = "WordBox"
+wordBox.Size = UDim2.new(0, 36, 0, 24)
+wordBox.Position = UDim2.new(1, -94, 0.5, -12)
+
+wordBox.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
+
+wordBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+wordBox.BorderSizePixel = 2
+
+wordBox.Text = "1"
+
+wordBox.Font = Enum.Font.SourceSansBold
+wordBox.TextSize = 14
+
+wordBox.TextColor3 = Color3.fromRGB(0, 0, 0)
+
+wordBox.ClearTextOnFocus = false
+
+wordBox.ZIndex = 6
+wordBox.Parent = wordFrame
+
+createCorner(wordBox, 3)
+
+--------------------------------------------------------------------------------
+-- SEPARADOR
+--------------------------------------------------------------------------------
+
+local line1 = Instance.new("Frame")
+
+line1.Name = "Line1"
+line1.Size = UDim2.new(1, 0, 0, 2)
+
+line1.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+
+line1.BorderSizePixel = 0
+
+line1.LayoutOrder = 5
+line1.ZIndex = 4
+
+line1.Parent = contentFrame
+
+--------------------------------------------------------------------------------
+-- CONFIGURATION
+--------------------------------------------------------------------------------
+
+createSectionTitle("CONFIGURATION", 6)
+
+--------------------------------------------------------------------------------
+-- KEYBIND
+--------------------------------------------------------------------------------
+
+local keybindRow = Instance.new("Frame")
+
+keybindRow.Name = "KeybindRow"
+keybindRow.Size = UDim2.new(1, 0, 0, 38)
+
+keybindRow.BackgroundTransparency = 1
+
+keybindRow.LayoutOrder = 7
+keybindRow.ZIndex = 4
+
+keybindRow.Parent = contentFrame
+
+local keybindLabel = Instance.new("TextLabel")
+
+keybindLabel.Name = "Label"
+keybindLabel.Size = UDim2.new(0.6, 0, 1, 0)
+
+keybindLabel.BackgroundTransparency = 1
+
+keybindLabel.Text = "Auto Redeem\n(On/Off)"
+
+keybindLabel.Font = Enum.Font.SourceSansBold
+keybindLabel.TextSize = 15
+
+keybindLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+keybindLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+keybindLabel.ZIndex = 5
+keybindLabel.Parent = keybindRow
+
+addTextStroke(keybindLabel)
+
+local keybindBtn = Instance.new("TextButton")
+
+keybindBtn.Name = "KeybindButton"
+
+keybindBtn.Size = UDim2.new(0, 32, 0, 28)
+keybindBtn.Position = UDim2.new(1, -38, 0.5, -14)
+
+keybindBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+
+keybindBtn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+keybindBtn.BorderSizePixel = 2
+
+keybindBtn.Text = "R"
+
+keybindBtn.Font = Enum.Font.SourceSansBold
+keybindBtn.TextSize = 16
+
+keybindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+keybindBtn.AutoButtonColor = false
+
+keybindBtn.ZIndex = 5
+keybindBtn.Parent = keybindRow
+
+createCorner(keybindBtn, 4)
+
+--------------------------------------------------------------------------------
+-- MODO AUTO / MANUAL
+--------------------------------------------------------------------------------
+
+local modeRow = Instance.new("Frame")
+
+modeRow.Name = "ModeRow"
+modeRow.Size = UDim2.new(1, 0, 0, 38)
+
+modeRow.BackgroundTransparency = 1
+
+modeRow.LayoutOrder = 8
+modeRow.ZIndex = 4
+
+modeRow.Parent = contentFrame
+
+local modeLabel = Instance.new("TextLabel")
+
+modeLabel.Name = "Label"
+modeLabel.Size = UDim2.new(0.6, 0, 1, 0)
+
+modeLabel.BackgroundTransparency = 1
+
+modeLabel.Text = "Auto Redeem\n(Auto/Manual)"
+
+modeLabel.Font = Enum.Font.SourceSansBold
+modeLabel.TextSize = 15
+
+modeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+modeLabel.TextXAlignment = Enum.TextXAlignment.Left
+modeLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+modeLabel.ZIndex = 5
+modeLabel.Parent = modeRow
+
+addTextStroke(modeLabel)
+
+local modeBtn = Instance.new("TextButton")
+
+modeBtn.Name = "ModeButton"
+
+modeBtn.Size = UDim2.new(0, 58, 0, 26)
+modeBtn.Position = UDim2.new(1, -58, 0.5, -13)
+
+modeBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+
+modeBtn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+modeBtn.BorderSizePixel = 2
+
+modeBtn.Text = "Auto"
+
+modeBtn.Font = Enum.Font.SourceSansBold
+modeBtn.TextSize = 15
+
+modeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+modeBtn.AutoButtonColor = false
+
+modeBtn.ZIndex = 5
+modeBtn.Parent = modeRow
+
+addTextStroke(modeBtn)
+
+createCorner(modeBtn, 4)
+
+--------------------------------------------------------------------------------
+-- SEPARADOR 2
+--------------------------------------------------------------------------------
+
+local line2 = Instance.new("Frame")
+
+line2.Name = "Line2"
+
+line2.Size = UDim2.new(1, 0, 0, 2)
+
+line2.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+
+line2.BorderSizePixel = 0
+
+line2.LayoutOrder = 9
+line2.ZIndex = 4
+
+line2.Parent = contentFrame
+
+--------------------------------------------------------------------------------
+-- TEST CODE
+--------------------------------------------------------------------------------
+
+createSectionTitle("TEST CODE", 10)
+
+local testContainer = Instance.new("Frame")
+
+testContainer.Name = "TestContainer"
+
+testContainer.Size = UDim2.new(1, 0, 0, 32)
+
+testContainer.BackgroundTransparency = 1
+
+testContainer.LayoutOrder = 11
+testContainer.ZIndex = 4
+
+testContainer.Parent = contentFrame
+
+local testBox = Instance.new("TextBox")
+
+testBox.Name = "TestCodeBox"
+
+testBox.Size = UDim2.new(1, 0, 1, 0)
+
+testBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+
+testBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+testBox.BorderSizePixel = 2
+
+testBox.PlaceholderText = "Escribe o pega el texto aquí..."
+
+testBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+
+testBox.Text = ""
+
+testBox.Font = Enum.Font.SourceSans
+testBox.TextSize = 14
+
+testBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+testBox.ClearTextOnFocus = false
+
+testBox.TextXAlignment = Enum.TextXAlignment.Left
+
+testBox.ZIndex = 5
+testBox.Parent = testContainer
+
+createCorner(testBox, 3)
+
+addTextStroke(testBox)
+
+--------------------------------------------------------------------------------
+-- FUNCIONES DE CONFIGURACIÓN
+--------------------------------------------------------------------------------
+
+local function updateDelay()
+
+	local value = tonumber(delayBox.Text)
+
+	if value then
+		value = math.clamp(value, 0, 10)
+		config.delayTime = value
+		delayBox.Text = tostring(value)
+	else
+		config.delayTime = 0.2
+		delayBox.Text = "0.2"
+	end
+
+end
+
+local function updateWordTarget()
+
+	local value = tonumber(wordBox.Text)
+
+	if value then
+
+		value = math.max(1, math.floor(value))
+
+		config.wordSubmitTarget = value
+
+		wordBox.Text = tostring(value)
+
+	else
+
+		config.wordSubmitTarget = 1
+		wordBox.Text = "1"
+
+	end
+
+end
+
+--------------------------------------------------------------------------------
+-- BOTÓN AUTO REDEEM
+--------------------------------------------------------------------------------
+
+autoRedeemBtn.MouseButton1Click:Connect(function()
+
+	config.autoRedeemActive = not config.autoRedeemActive
+
+	setToggle(
+		autoRedeemBtn,
+		autoRedeemCircle,
+		config.autoRedeemActive
+	)
+
+end)
+
+--------------------------------------------------------------------------------
+-- BOTÓN SUBMIT DELAY
+--------------------------------------------------------------------------------
+
+delayBtn.MouseButton1Click:Connect(function()
+
+	config.submitDelayActive = not config.submitDelayActive
+
+	setToggle(
+		delayBtn,
+		delayCircle,
+		config.submitDelayActive
+	)
+
+end)
+
+--------------------------------------------------------------------------------
+-- BOTÓN WORD SUBMIT
+--------------------------------------------------------------------------------
+
+wordBtn.MouseButton1Click:Connect(function()
+
+	config.wordSubmitActive = not config.wordSubmitActive
+
+	setToggle(
+		wordBtn,
+		wordCircle,
+		config.wordSubmitActive
+	)
+
+end)
+
+--------------------------------------------------------------------------------
+-- CAMBIO DE DELAY
+--------------------------------------------------------------------------------
+
+delayBox.FocusLost:Connect(function()
+	updateDelay()
+end)
+
+--------------------------------------------------------------------------------
+-- CAMBIO DE CANTIDAD DE PALABRAS
+--------------------------------------------------------------------------------
+
+wordBox.FocusLost:Connect(function()
+	updateWordTarget()
+end)
+
+--------------------------------------------------------------------------------
+-- CAMBIO AUTO / MANUAL
+--------------------------------------------------------------------------------
+
+modeBtn.MouseButton1Click:Connect(function()
+
+	config.isAutoMode = not config.isAutoMode
+
+	if config.isAutoMode then
+
+		modeBtn.Text = "Auto"
+		modeBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+
+	else
+
+		modeBtn.Text = "Manual"
+		modeBtn.BackgroundColor3 = Color3.fromRGB(170, 100, 0)
+
+	end
+
+end)
+
+--------------------------------------------------------------------------------
+-- CAMBIO DE TECLA
+--------------------------------------------------------------------------------
+
+keybindBtn.MouseButton1Click:Connect(function()
+
+	if config.listeningForKey then
+		return
+	end
+
+	config.listeningForKey = true
+
+	keybindBtn.Text = "..."
+
+end)
+
+--------------------------------------------------------------------------------
+-- INPUT DE TECLADO
+--------------------------------------------------------------------------------
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+
+	if gameProcessed then
+		return
+	end
+
+	----------------------------------------------------------------
+	-- CONFIGURAR NUEVA TECLA
+	----------------------------------------------------------------
+
+	if config.listeningForKey then
+
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+
+			config.toggleKey = input.KeyCode
+
+			keybindBtn.Text = input.KeyCode.Name
+
+			config.listeningForKey = false
+
+		end
+
+		return
+	end
+
+	----------------------------------------------------------------
+	-- TOGGLE AUTO REDEEM CON TECLA
+	----------------------------------------------------------------
+
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+
+		if input.KeyCode == config.toggleKey then
+
+			config.autoRedeemActive =
+				not config.autoRedeemActive
+
+			setToggle(
+				autoRedeemBtn,
+				autoRedeemCircle,
+				config.autoRedeemActive
+			)
+
+		end
+
+	end
+
+end)
+
+--------------------------------------------------------------------------------
+-- INICIALIZACIÓN
+--------------------------------------------------------------------------------
+
+setToggle(
+	autoRedeemBtn,
+	autoRedeemCircle,
+	false
+)
+
+setToggle(
+	delayBtn,
+	delayCircle,
+	false
+)
+
+setToggle(
+	wordBtn,
+	wordCircle,
+	false
+)
+
+updateDelay()
+updateWordTarget()
+
+keybindBtn.Text = config.toggleKey.Name
+
+--------------------------------------------------------------------------------
+-- MENSAJE DE INICIO
+--------------------------------------------------------------------------------
+
+print("====================================")
+print(" Auto Redeem Panel")
+print(" Panel cargado correctamente.")
+print(" Background ID: 13714595263864")
+print(" Toggle Key: " .. config.toggleKey.Name)
+print("====================================")
